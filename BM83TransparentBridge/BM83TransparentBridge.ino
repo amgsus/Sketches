@@ -5,10 +5,14 @@
 #define BTM_TRANSMITTER_CHARACTERISTIC  "49535343-1e4d-4bd9-ba61-23c647249616"
 #define BTM_RECEIVER_CHARACTERISTIC     "49535343-8841-43f4-a8d4-ecbe34729bb3"
 
-#define LED_PIN 13
-
 #define BTM_TX_BUFFER_SIZE 32
 #define BTM_RX_BUFFER_SIZE 32
+
+#define LED_ON()    do { __blinking = 0; digitalWrite(LED_BUILTIN, HIGH);                 } while (0) 
+#define LED_OFF()   do { __blinking = 0; digitalWrite(LED_BUILTIN, LOW );                 } while (0)
+#define LED_BLINK() do { __blinking = 1; digitalWrite(LED_BUILTIN, LOW ); __ledState = 0; } while (0)
+
+#define LED_BLINK_INTERVAL 250
 
 typedef enum {
   STA_START_SCANNING = 0,
@@ -21,11 +25,15 @@ typedef enum {
 } BRIDGE_STATE;
 
 static BRIDGE_STATE      __state = STA_START_SCANNING;
+static byte              __btmTxBuffer[BTM_TX_BUFFER_SIZE];
+static byte              __btmRxBuffer[BTM_RX_BUFFER_SIZE];
+static bool              __blinking = false;
+static uint32_t          __blink = 0;
+static bool              __ledState = false;
+
 static BLEDevice         __connectedDevice;
 static BLECharacteristic __c_btmTx;
 static BLECharacteristic __c_btmRx;
-static byte              __btmTxBuffer[BTM_TX_BUFFER_SIZE];
-static byte              __btmRxBuffer[BTM_RX_BUFFER_SIZE];
 
 void 
 setup(void) 
@@ -33,13 +41,17 @@ setup(void)
   Serial.begin(115200);
   while (!Serial);
   BLE.begin();
+
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void 
 loop(void) 
-{
+{ 
   switch (__state) {
+    default:
     case STA_START_SCANNING:
+      LED_BLINK();
       Serial.print("> Starting scan for peripheral advertised service (UUID ");
       Serial.print(TRANSPARENT_UART_SERVICE_UUID);
       Serial.print(")... ");
@@ -129,6 +141,7 @@ loop(void)
           Serial.println(")!");
           __state = STA_ERROR;
         } else {
+          LED_ON();
           __state = STA_BRIDGING;  
         }
       }
@@ -136,6 +149,7 @@ loop(void)
 
     case STA_BRIDGING:
       if (!__connectedDevice.connected()) {
+        LED_OFF();
         Serial.println("> Device disconnected!");
         Serial.println();
         __state = STA_START_SCANNING;
@@ -157,6 +171,7 @@ loop(void)
       break;
 
     case STA_ERROR:
+      LED_OFF();
       if (__connectedDevice) {
         Serial.println("> Disconnecting...");
         Serial.println();
@@ -165,5 +180,20 @@ loop(void)
       __state = STA_START_SCANNING;
       delay(3000);
       break;
+  }
+
+  if (__blinking) {
+    uint32_t now = millis();
+    if (now - __blink >= LED_BLINK_INTERVAL) {
+      __blink = now;
+      __ledState ^= true;
+      if (__ledState) {
+        LED_ON();
+        __blinking = 1;
+      } else {
+        LED_OFF();
+        __blinking = 1;
+      }
+    }
   }
 }
